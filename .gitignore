@@ -1,0 +1,23 @@
+# PlatformIO
+.pio/
+.vscode/
+*.pio
+*.pioenvs
+*.piolibdeps
+
+# Build
+.pio/build/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+*.bak
