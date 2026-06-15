@@ -622,7 +622,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
             "<div class=dnav>"
             "<a class='ditem act' href=/>&#127968; Painel</a>"
             "<a class='ditem' href=/relatorio>&#128202; Relatorios</a>"
-            "<a class='ditem' href=/scan>&#128269; Redes WiFi</a>"
+            "<a class='ditem' href=/redes>&#128269; Redes WiFi</a>"
             "<a class='ditem' href=/reset_wifi>&#128260; Mudar Rede</a>"
             "</div>"
             "<div class=dfoot><p>ESP32-C6 v1.0</p></div>"
@@ -646,7 +646,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
             "<div class=alert><h3>&#9888; Atacantes</h3>"
             "<div id=al style='color:rgba(196,181,253,.25);font-size:.7rem'>Nenhum detectado</div></div>"
             "<a class='abtn pri' href=/relatorio>&#128202; Ver Relatorio Completo</a>"
-            "<a class='abtn sec' href=/scan>&#128269; Ver Redes WiFi</a>"
+            "<a class='abtn sec' href=/redes>&#128269; Ver Redes WiFi</a>"
             "<a class='abtn dan' href=/reset_wifi>&#128260; Mudar Rede WiFi</a>"
             "</div>"
             "<script>"
@@ -891,7 +891,7 @@ static esp_err_t relatorio_handler(httpd_req_t *req) {
         "<div class=dnav>"
         "<a class='ditem' href=/>&#127968; Painel</a>"
         "<a class='ditem act' href=/relatorio>&#128202; Relatorios</a>"
-        "<a class='ditem' href=/scan>&#128269; Redes WiFi</a>"
+        "<a class='ditem' href=/redes>&#128269; Redes WiFi</a>"
         "<a class='ditem' href=/reset_wifi>&#128260; Mudar Rede</a>"
         "</div>"
         "<div class=dfoot><p>ESP32-C6 v1.0</p></div>"
@@ -1013,10 +1013,126 @@ static esp_err_t scan_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t redes_handler(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+
+    wifi_scan_config_t scan = {
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time = {.active = {.min = 30, .max = 50}}
+    };
+    esp_err_t err = esp_wifi_scan_start(&scan, true);
+    uint16_t count = 0;
+    esp_wifi_scan_get_ap_num(&count);
+    if (count > 40) count = 40;
+    wifi_ap_record_t *recs = (wifi_ap_record_t *)calloc(count, sizeof(wifi_ap_record_t));
+    if (recs) esp_wifi_scan_get_ap_records(&count, recs);
+
+    char *buf = (char *)malloc(6000);
+    if (!buf) { httpd_resp_send_500(req); free(recs); return ESP_FAIL; }
+
+    int n = 0;
+    n += snprintf(buf + n, 6000 - n,
+        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Redes WiFi</title><style>"
+        "*{margin:0;padding:0;box-sizing:border-box}"
+        "body{font-family:-apple-system,'Segoe UI',sans-serif;min-height:100vh;background:linear-gradient(135deg,#0a0e1a,#12102a,#0a1520);color:#e8eaf6}"
+        "#overlay{display:none;position:fixed;top:0;left:0;width:100%%;height:100%%;background:rgba(0,0,0,.7);z-index:99}"
+        "#drawer{position:fixed;top:0;left:0;width:280px;height:100%%;background:linear-gradient(180deg,#0f0d2a,#13112c);z-index:100;border-right:1px solid rgba(99,102,241,.12);transition:left .3s ease}"
+        "#drawer.open{left:0}#drawer.closed{left:-280px}"
+        ".dhead{padding:24px 18px 16px;border-bottom:1px solid rgba(99,102,241,.1)}"
+        ".dhead h2{font-size:1.05rem;font-weight:700;color:#e0e7ff}"
+        ".dhead p{font-size:.6rem;color:rgba(196,181,253,.4);margin-top:4px}"
+        ".dnav{padding:10px 0}"
+        ".ditem{display:flex;align-items:center;gap:14px;padding:13px 18px;text-decoration:none;color:rgba(196,181,253,.45);font-size:.85rem;font-weight:500}"
+        ".ditem.act{color:#818cf8;background:rgba(99,102,241,.1);border-left:3px solid #6366f1}"
+        ".dfoot{padding:18px;border-top:1px solid rgba(99,102,241,.08)}"
+        ".dfoot p{font-size:.5rem;color:rgba(196,181,253,.2);text-align:center}"
+        ".topbar{position:fixed;top:0;left:0;right:0;height:56px;background:rgba(12,14,30,.92);backdrop-filter:blur(16px);border-bottom:1px solid rgba(99,102,241,.15);display:flex;align-items:center;padding:0 16px;z-index:98}"
+        ".hbtn{width:40px;height:40px;border:none;background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(139,92,246,.1));border:1px solid rgba(99,102,241,.2);border-radius:10px;color:#c4b5fd;font-size:1.2rem;cursor:pointer}"
+        ".hbtn:active{transform:scale(.95)}"
+        ".ttitle{flex:1;text-align:center;font-size:.95rem;font-weight:700;color:#e0e7ff}"
+        ".ttitle small{display:block;font-size:.5rem;color:rgba(196,181,253,.5);font-weight:400}"
+        ".content{padding:16px;padding-top:72px}"
+        ".net{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:linear-gradient(135deg,rgba(99,102,241,.06),rgba(139,92,246,.04));border:1px solid rgba(99,102,241,.1);border-radius:12px;margin-bottom:6px;text-decoration:none}"
+        ".net:active{background:rgba(99,102,241,.12)}"
+        ".net .nm{color:#e0e7ff;font-size:.85rem}"
+        ".net .inf{display:flex;align-items:center;gap:6px}"
+        ".tgs{font-size:.55rem;padding:3px 8px;border-radius:5px;font-weight:600}"
+        ".tgs.g{background:rgba(52,211,153,.1);color:#34d399}"
+        ".tgs.y{background:rgba(251,191,36,.1);color:#fbbf24}"
+        ".tgs.r{background:rgba(248,113,113,.1);color:#f87171}"
+        ".lk{font-size:.55rem;padding:3px 8px;border-radius:5px;font-weight:500}"
+        ".lk.a{background:rgba(52,211,153,.1);color:#34d399}"
+        ".lk.l{background:rgba(99,102,241,.1);color:#818cf8}"
+        ".stts{text-align:center;padding:14px;font-size:.7rem;color:rgba(196,181,253,.25)}"
+        "</style></head><body>"
+        "<div id=overlay onclick='closeDrawer()'></div>"
+        "<div id=drawer class=closed>"
+        "<div class=dhead><h2>&#128737; Agente WiFi</h2><p>Redes WiFi Disponiveis</p></div>"
+        "<div class=dnav>"
+        "<a class='ditem' href=/>&#127968; Painel</a>"
+        "<a class='ditem' href=/relatorio>&#128202; Relatorios</a>"
+        "<a class='ditem act' href=/redes>&#128269; Redes WiFi</a>"
+        "<a class='ditem' href=/reset_wifi>&#128260; Mudar Rede</a>"
+        "</div>"
+        "<div class=dfoot><p>ESP32-C6 v1.0</p></div>"
+        "</div>"
+        "<header class=topbar>"
+        "<button class=hbtn onclick='openDrawer()'>&#9776;</button>"
+        "<div class=ttitle><small>Redes WiFi</small>&#128269; Redes Disponiveis</div>"
+        "</header>"
+        "<div class=content>");
+
+    if (recs && count > 0) {
+        for (uint16_t i = 0; i < count; i++) {
+            if (recs[i].ssid[0] == 0) continue;
+            char safe[64] = {};
+            int k = 0;
+            for (int j = 0; recs[i].ssid[j] && j < 32 && k < 60; j++) {
+                char c = (char)recs[i].ssid[j];
+                if (c == '<') { safe[k++]='&'; safe[k++]='l'; safe[k++]='t'; safe[k++]=';'; }
+                else if (c == '&') { safe[k++]='&'; safe[k++]='a'; safe[k++]='m'; safe[k++]='p'; safe[k++]=';'; }
+                else safe[k++] = c;
+            }
+            safe[k] = 0;
+            if (k == 0) continue;
+
+            const char *rssi_cls = recs[i].rssi > -50 ? "g" : recs[i].rssi > -70 ? "y" : "r";
+            const char *lock_txt = recs[i].authmode == WIFI_AUTH_OPEN ? "Aberta" : "Protegida";
+            const char *lock_cls = recs[i].authmode == WIFI_AUTH_OPEN ? "a" : "l";
+
+            n += snprintf(buf + n, 6000 - n,
+                "<a class=net href='/connect?ssid=%s'><span class=nm>%s</span>"
+                "<span class=inf><span class='tgs %s'>%d</span>"
+                "<span class='lk %s'>%s</span></span></a>",
+                safe, safe, rssi_cls, recs[i].rssi, lock_cls, lock_txt);
+        }
+    } else {
+        n += snprintf(buf + n, 6000 - n,
+            "<div class=stts>&#128269; Nenhuma rede encontrada.<br>Tente novamente mais perto de um roteador.</div>");
+    }
+
+    n += snprintf(buf + n, 6000 - n,
+        "<div class=stts><b>%d</b> redes encontradas</div>"
+        "</div>"
+        "<script>"
+        "function openDrawer(){document.getElementById('drawer').className='open';document.getElementById('overlay').style.display='block'}"
+        "function closeDrawer(){document.getElementById('drawer').className='closed';document.getElementById('overlay').style.display='none'}"
+        "</script></body></html>", count);
+
+    free(recs);
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_send(req, buf, n);
+    free(buf);
+    return ESP_OK;
+}
+
 static httpd_handle_t start_webserver(void) {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.server_port = 80;
-    cfg.max_uri_handlers = 14;
+    cfg.max_uri_handlers = 16;
     cfg.recv_wait_timeout = 30;
     cfg.send_wait_timeout = 30;
 
@@ -1038,6 +1154,7 @@ static httpd_handle_t start_webserver(void) {
     httpd_uri_t h10 = {"/connect", HTTP_GET, connect_handler, NULL};
     httpd_uri_t h11 = {"/relatorio", HTTP_GET, relatorio_handler, NULL};
     httpd_uri_t h12 = {"/ataques", HTTP_GET, ataques_handler, NULL};
+    httpd_uri_t h13 = {"/redes", HTTP_GET, redes_handler, NULL};
     httpd_register_uri_handler(srv, &h1);
     httpd_register_uri_handler(srv, &h2);
     httpd_register_uri_handler(srv, &h3);
@@ -1050,6 +1167,7 @@ static httpd_handle_t start_webserver(void) {
     httpd_register_uri_handler(srv, &h10);
     httpd_register_uri_handler(srv, &h11);
     httpd_register_uri_handler(srv, &h12);
+    httpd_register_uri_handler(srv, &h13);
 
     ESP_LOGI(TAG, "HTTP server rodando na porta 80");
     return srv;
